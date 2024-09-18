@@ -1,0 +1,210 @@
+@page "/game"
+@inject NavigationManager NavigationManager
+@inject QuizService QuizService
+@using Microsoft.AspNetCore.WebUtilities
+
+<h3>Quiz Game</h3>
+
+@if (isGameOver)
+{
+    <p>Quiz finished!</p>
+    <p>@player1Name's Score: @player1Score</p>
+    <p>@player2Name's Score: @player2Score</p>
+}
+else if (questions != null && currentRound <= totalRounds && currentQuestionIndex < questions.Count)
+{
+    <p><strong>Round @currentRound / @totalRounds</strong></p>
+    <p>@currentPlayer's turn!</p>
+    <p>@questions[currentQuestionIndex].Question</p>
+
+    <p>Time left: @timeLeft seconds</p> <!-- Display the remaining time -->
+
+    @for (int i = 0; i < questions[currentQuestionIndex].Options.Length; i++)
+    {
+        int capturedIndex = i;
+        <button @onclick="() => CheckAnswer(capturedIndex)"
+            disabled="@isAnswered">@questions[currentQuestionIndex].Options[capturedIndex]</button>
+    }
+
+    @if (!string.IsNullOrEmpty(feedback))
+    {
+        <p style="color:@feedbackColor">@feedback</p>
+    }
+
+    <hr />
+    <h4>Scores</h4>
+    <p>@player1Name's Score: @player1Score</p>
+    <p>@player2Name's Score: @player2Score</p>
+}
+else if (questions == null)
+{
+    <p>Loading questions...</p>
+}
+
+@code {
+    private List<(string Question, string[] Options, string Answer)> questions = new();
+    private int currentQuestionIndex = 0;
+    private string feedback = string.Empty;
+    private string feedbackColor = "black";
+    private bool isAnswered = false;
+
+    private string player1Name = "Player 1";
+    private string player2Name = "Player 2";
+    private string currentPlayer;
+    private int currentRound = 1;
+    private int totalRounds = 5;
+
+    private int player1Score = 0;
+    private int player2Score = 0;
+
+    private bool isGameOver = false;
+
+    private int timeLeft = 10;
+    private CancellationTokenSource timerCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+
+        if (query.TryGetValue("player1", out var p1))
+        {
+            player1Name = p1;
+        }
+
+        if (query.TryGetValue("player2", out var p2))
+        {
+            player2Name = p2;
+        }
+
+        if (query.TryGetValue("rounds", out var r))
+        {
+            if (int.TryParse(r, out int rounds))
+            {
+                totalRounds = rounds;
+            }
+        }
+
+        currentPlayer = player1Name;
+
+        questions = await QuizService.LoadQuestionsAsync();
+
+        StartTimer();
+    }
+
+    private async void StartTimer()
+    {
+
+        timerCts?.Cancel();
+        timerCts?.Dispose();
+
+        isAnswered = false;
+        timerCts = new CancellationTokenSource();
+
+        try
+        {
+            while (timeLeft > 0 && !isAnswered)
+            {
+                await Task.Delay(1000, timerCts.Token);
+                timeLeft--;
+                StateHasChanged();
+            }
+
+            if (timeLeft == 0 && !isAnswered)
+            {
+                feedback = $"{currentPlayer} did not answer in time!";
+                feedbackColor = "red";
+                SwitchTurnOrNextRound();
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Timer was canceled, do nothing
+        }
+    }
+
+    private void CheckAnswer(int selectedOptionIndex)
+    {
+        if (questions != null && selectedOptionIndex >= 0 && selectedOptionIndex <
+        questions[currentQuestionIndex].Options.Length)
+        {
+            var correctAnswer = questions[currentQuestionIndex].Answer.Trim();
+            var selectedAnswer = questions[currentQuestionIndex].Options[selectedOptionIndex].Trim();
+
+            timerCts.Cancel();
+            isAnswered = true;
+
+            if (string.Equals(selectedAnswer, correctAnswer, StringComparison.OrdinalIgnoreCase))
+            {
+                feedback = $"{currentPlayer} answered correctly!";
+                feedbackColor = "green";
+
+                int points = CalculatePointsBasedOnTime();
+                if (currentPlayer == player1Name)
+                {
+                    player1Score += points;
+                }
+                else if (currentPlayer == player2Name)
+                {
+                    player2Score += points;
+                }
+            }
+            else
+            {
+                feedback = $"{currentPlayer} answered incorrectly.";
+                feedbackColor = "red";
+            }
+
+            SwitchTurnOrNextRound();
+        }
+    }
+
+    private int CalculatePointsBasedOnTime()
+    {
+        if (timeLeft >= 8)
+        {
+            return 10;
+        }
+        else if (timeLeft >= 5)
+        {
+            return 5;
+        }
+        return 0;
+    }
+    private void SwitchTurnOrNextRound()
+    {
+        timeLeft = 10;
+        StateHasChanged();
+
+        if (currentPlayer == player1Name)
+        {
+            currentPlayer = player2Name;
+            currentQuestionIndex++;
+        }
+        else
+        {
+            currentPlayer = player1Name;
+            currentRound++;
+            currentQuestionIndex++;
+        }
+
+        if (currentRound > totalRounds || currentQuestionIndex >= questions.Count)
+        {
+            EndGame();
+        }
+        else
+        {
+            StartTimer();
+        }
+    }
+
+    private void EndGame()
+    {
+        feedback = "Game Over!";
+        feedbackColor = "blue";
+        isGameOver = true;
+
+        timerCts?.Cancel();
+        timerCts?.Dispose();
+    }
+}

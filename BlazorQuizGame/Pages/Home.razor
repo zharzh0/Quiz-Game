@@ -1,0 +1,36 @@
+﻿@page "/"
+@inject NavigationManager NavigationManager
+
+<PageTitle>Quiz Game Setup</PageTitle>
+
+<h3>Enter Player Names</h3>
+
+<div>
+    <label>Player 1 Name:</label>
+    <input @bind="Player1Name" />
+</div>
+<div>
+    <label>Player 2 Name:</label>
+    <input @bind="Player2Name" />
+</div>
+
+<h3>Game Settings</h3>
+
+<div>
+    <label>Number of Rounds:</label>
+    <input type="number" @bind="Rounds" min="1" />
+</div>
+
+<br />
+<button @onclick="StartGame">Start Game</button>
+
+@code {
+    private string Player1Name { get; set; } = string.Empty;
+    private string Player2Name { get; set; } = string.Empty;
+    private int Rounds { get; set; } = 5;
+
+    private void StartGame()
+    {
+        NavigationManager.NavigateTo($"/game?player1={Player1Name}&player2={Player2Name}&rounds={Rounds}");
+    }
+}
